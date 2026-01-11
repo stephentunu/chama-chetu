@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useAdminCheck } from '@/hooks/useAdminCheck';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { ContributionModal } from '@/components/dashboard/ContributionModal';
+import { LoanApplicationModal } from '@/components/dashboard/LoanApplicationModal';
 import { 
   Sprout, 
   LogOut, 
@@ -17,7 +21,8 @@ import {
   Bell,
   Plus,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Shield
 } from 'lucide-react';
 
 interface Profile {
@@ -25,7 +30,7 @@ interface Profile {
   phone_number: string;
 }
 
-interface ChamamMembership {
+interface ChamaMembership {
   chama_id: string;
   member_role: string;
   chamas: {
@@ -46,12 +51,15 @@ interface Transaction {
 
 export default function Dashboard() {
   const { user, loading, signOut } = useAuth();
+  const { isAdmin } = useAdminCheck(user?.id);
   const navigate = useNavigate();
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [chamaInfo, setChamaInfo] = useState<ChamamMembership | null>(null);
+  const [chamaInfo, setChamaInfo] = useState<ChamaMembership | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [totalSavings, setTotalSavings] = useState(0);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [showContributionModal, setShowContributionModal] = useState(false);
+  const [showLoanModal, setShowLoanModal] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -90,7 +98,7 @@ export default function Dashboard() {
           .single();
 
         if (membershipData) {
-          setChamaInfo(membershipData as unknown as ChamamMembership);
+          setChamaInfo(membershipData as unknown as ChamaMembership);
         }
 
         // Fetch contributions total
@@ -126,6 +134,31 @@ export default function Dashboard() {
     fetchData();
   }, [user]);
 
+  const refreshData = async () => {
+    if (!user) return;
+    const { data: contributionsData } = await supabase
+      .from('contributions')
+      .select('amount')
+      .eq('user_id', user.id)
+      .eq('status', 'completed');
+
+    if (contributionsData) {
+      const total = contributionsData.reduce((sum, c) => sum + Number(c.amount), 0);
+      setTotalSavings(total);
+    }
+
+    const { data: transactionsData } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (transactionsData) {
+      setTransactions(transactionsData);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
@@ -143,7 +176,7 @@ export default function Dashboard() {
 
   const savingsTarget = 100000;
   const savingsPercentage = Math.min((totalSavings / savingsTarget) * 100, 100);
-  const loanLimit = totalSavings * 2;
+  const loanLimit = totalSavings; // Loan limit equals savings
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-KE', {
@@ -175,6 +208,14 @@ export default function Dashboard() {
             </Link>
 
             <div className="flex items-center gap-4">
+              {isAdmin && (
+                <Link to="/admin">
+                  <Button variant="outline" className="border-primary text-primary">
+                    <Shield className="w-4 h-4 mr-2" />
+                    Admin Panel
+                  </Button>
+                </Link>
+              )}
               <Button variant="ghost" size="icon">
                 <Bell className="w-5 h-5" />
               </Button>
@@ -241,7 +282,7 @@ export default function Dashboard() {
 
           <Card className="shadow-card">
             <CardHeader className="pb-2">
-              <CardDescription>Available Loan Limit</CardDescription>
+              <CardDescription>Loan Limit (= Savings)</CardDescription>
               <CardTitle className="text-2xl text-accent">
                 {isLoadingData ? (
                   <Skeleton className="h-8 w-32" />
@@ -251,7 +292,7 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">Based on 2x your savings</p>
+              <p className="text-sm text-muted-foreground">Based on your total savings</p>
             </CardContent>
           </Card>
 
@@ -273,27 +314,33 @@ export default function Dashboard() {
 
         {/* Action Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="shadow-card hover:shadow-elegant transition-shadow cursor-pointer group border-primary/20 hover:border-primary">
+          <Card 
+            className="shadow-card hover:shadow-elegant transition-shadow cursor-pointer group border-primary/20 hover:border-primary"
+            onClick={() => setShowContributionModal(true)}
+          >
             <CardContent className="p-6 flex items-center gap-4">
               <div className="w-14 h-14 rounded-xl bg-primary flex items-center justify-center group-hover:scale-110 transition-transform">
                 <Wallet className="w-7 h-7 text-primary-foreground" />
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-foreground">Make Contribution</h3>
-                <p className="text-sm text-muted-foreground">Pay your savings</p>
+                <p className="text-sm text-muted-foreground">Pay via M-Pesa</p>
               </div>
               <Plus className="w-5 h-5 text-primary" />
             </CardContent>
           </Card>
 
-          <Card className="shadow-card hover:shadow-elegant transition-shadow cursor-pointer group border-accent/20 hover:border-accent">
+          <Card 
+            className="shadow-card hover:shadow-elegant transition-shadow cursor-pointer group border-accent/20 hover:border-accent"
+            onClick={() => setShowLoanModal(true)}
+          >
             <CardContent className="p-6 flex items-center gap-4">
               <div className="w-14 h-14 rounded-xl bg-accent flex items-center justify-center group-hover:scale-110 transition-transform">
                 <CreditCard className="w-7 h-7 text-accent-foreground" />
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-foreground">Apply for Loan</h3>
-                <p className="text-sm text-muted-foreground">Get funds when you need</p>
+                <p className="text-sm text-muted-foreground">Max: {formatCurrency(loanLimit)}</p>
               </div>
               <Plus className="w-5 h-5 text-accent" />
             </CardContent>
@@ -390,6 +437,25 @@ export default function Dashboard() {
           </Card>
         </div>
       </main>
+
+      {/* Modals */}
+      <ContributionModal
+        open={showContributionModal}
+        onClose={() => setShowContributionModal(false)}
+        userId={user?.id || ''}
+        chamaId={chamaInfo?.chama_id || null}
+        phoneNumber={profile?.phone_number || ''}
+        onSuccess={refreshData}
+      />
+
+      <LoanApplicationModal
+        open={showLoanModal}
+        onClose={() => setShowLoanModal(false)}
+        userId={user?.id || ''}
+        chamaId={chamaInfo?.chama_id || null}
+        maxLoanAmount={loanLimit}
+        onSuccess={refreshData}
+      />
     </div>
   );
 }
