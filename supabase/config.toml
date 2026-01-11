@@ -1,1 +1,10 @@
 project_id = "yfvltbuqyvjqzogghkpj"
+
+[functions.mpesa-stk-push]
+verify_jwt = false
+
+[functions.mpesa-callback]
+verify_jwt = false
+
+[functions.mpesa-b2c]
+verify_jwt = false
