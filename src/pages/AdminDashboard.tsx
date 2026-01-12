@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { CreateChamaModal } from '@/components/admin/CreateChamaModal';
+import { AddMemberModal } from '@/components/admin/AddMemberModal';
 import {
   Sprout,
   LogOut,
@@ -21,6 +23,9 @@ import {
   Clock,
   BarChart3,
   DollarSign,
+  Plus,
+  UserPlus,
+  Building2,
 } from 'lucide-react';
 import {
   Table,
@@ -88,6 +93,8 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats>({ totalMembers: 0, totalSavings: 0, totalLoans: 0, pendingLoans: 0 });
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [processingLoan, setProcessingLoan] = useState<string | null>(null);
+  const [showCreateChamaModal, setShowCreateChamaModal] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -202,6 +209,39 @@ export default function AdminDashboard() {
       fetchData();
     }
   }, [user, isAdmin]);
+
+  const refreshData = async () => {
+    setIsLoadingData(true);
+    // Refetch all data
+    try {
+      const { data: membersData } = await supabase
+        .from('chama_members')
+        .select('*')
+        .order('join_date', { ascending: false });
+
+      if (membersData) {
+        const memberUserIds = membersData.map(m => m.user_id);
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('user_id, full_name, phone_number')
+          .in('user_id', memberUserIds);
+
+        const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]));
+        
+        const membersWithProfiles = membersData.map(m => ({
+          ...m,
+          profiles: profilesMap.get(m.user_id) || null,
+        }));
+
+        setMembers(membersWithProfiles);
+        setStats(prev => ({ ...prev, totalMembers: membersWithProfiles.length }));
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
 
   const handleLoanAction = async (loanId: string, action: 'approve' | 'reject') => {
     setProcessingLoan(loanId);
@@ -419,6 +459,18 @@ export default function AdminDashboard() {
               </CardTitle>
             </CardHeader>
           </Card>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="flex flex-wrap gap-4 mb-8">
+          <Button onClick={() => setShowCreateChamaModal(true)} className="gap-2">
+            <Building2 className="w-4 h-4" />
+            Create Chama
+          </Button>
+          <Button onClick={() => setShowAddMemberModal(true)} variant="secondary" className="gap-2">
+            <UserPlus className="w-4 h-4" />
+            Add Member to Chama
+          </Button>
         </div>
 
         {/* Tabs */}
@@ -669,6 +721,19 @@ export default function AdminDashboard() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Modals */}
+      <CreateChamaModal
+        open={showCreateChamaModal}
+        onClose={() => setShowCreateChamaModal(false)}
+        userId={user?.id || ''}
+        onSuccess={refreshData}
+      />
+      <AddMemberModal
+        open={showAddMemberModal}
+        onClose={() => setShowAddMemberModal(false)}
+        onSuccess={refreshData}
+      />
     </div>
   );
 }

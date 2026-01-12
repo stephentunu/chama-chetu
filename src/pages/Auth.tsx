@@ -4,12 +4,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Sprout, Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
+import { Sprout, Eye, EyeOff, Loader2, ArrowLeft, Shield } from 'lucide-react';
 
 const signInSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -32,6 +33,7 @@ type SignUpFormData = z.infer<typeof signUpSchema>;
 
 export default function Auth() {
   const [searchParams] = useSearchParams();
+  const isAdminMode = searchParams.get('mode') === 'admin';
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') === 'signup' ? 'signup' : 'signin');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -42,10 +44,34 @@ export default function Auth() {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (user) {
-      navigate('/dashboard');
-    }
-  }, [user, navigate]);
+    const checkUserAndRedirect = async () => {
+      if (user) {
+        if (isAdminMode) {
+          // Check if user is admin
+          const { data } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .eq('role', 'admin')
+            .single();
+          
+          if (data) {
+            navigate('/admin');
+          } else {
+            toast({
+              title: 'Access Denied',
+              description: 'You do not have admin privileges.',
+              variant: 'destructive',
+            });
+            navigate('/dashboard');
+          }
+        } else {
+          navigate('/dashboard');
+        }
+      }
+    };
+    checkUserAndRedirect();
+  }, [user, navigate, isAdminMode, toast]);
 
   const signInForm = useForm<SignInFormData>({
     resolver: zodResolver(signInSchema),
@@ -127,20 +153,30 @@ export default function Auth() {
         <div className="bg-card rounded-2xl shadow-xl p-8 border border-border">
           {/* Logo */}
           <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4">
-              <Sprout className="w-10 h-10 text-primary-foreground" />
+            <div className={`w-16 h-16 rounded-2xl ${isAdminMode ? 'bg-destructive' : 'bg-primary'} flex items-center justify-center mb-4`}>
+              {isAdminMode ? (
+                <Shield className="w-10 h-10 text-destructive-foreground" />
+              ) : (
+                <Sprout className="w-10 h-10 text-primary-foreground" />
+              )}
             </div>
-            <h1 className="text-2xl font-bold text-foreground">Our Future Chama</h1>
+            <h1 className="text-2xl font-bold text-foreground">
+              {isAdminMode ? 'Admin Portal' : 'Our Future Chama'}
+            </h1>
             <p className="text-muted-foreground text-center mt-2">
-              {activeTab === 'signin' ? 'Welcome back! Sign in to continue.' : 'Create your account to get started.'}
+              {isAdminMode 
+                ? 'Sign in with your admin credentials.' 
+                : (activeTab === 'signin' ? 'Welcome back! Sign in to continue.' : 'Create your account to get started.')}
             </p>
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
-            </TabsList>
+            {!isAdminMode && (
+              <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsTrigger value="signin">Sign In</TabsTrigger>
+                <TabsTrigger value="signup">Sign Up</TabsTrigger>
+              </TabsList>
+            )}
 
             {/* Sign In Form */}
             <TabsContent value="signin">
@@ -190,21 +226,25 @@ export default function Auth() {
                   </Link>
                 </div>
 
-                <Button type="submit" className="w-full bg-secondary hover:bg-secondary/90" disabled={isLoading}>
+                <Button 
+                  type="submit" 
+                  className={`w-full ${isAdminMode ? 'bg-destructive hover:bg-destructive/90' : 'bg-secondary hover:bg-secondary/90'}`} 
+                  disabled={isLoading}
+                >
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Signing in...
+                      {isAdminMode ? 'Verifying...' : 'Signing in...'}
                     </>
                   ) : (
-                    'Sign In'
+                    isAdminMode ? 'Admin Sign In' : 'Sign In'
                   )}
                 </Button>
               </form>
             </TabsContent>
 
-            {/* Sign Up Form */}
-            <TabsContent value="signup">
+            {/* Sign Up Form - Hidden in admin mode */}
+            {!isAdminMode && <TabsContent value="signup">
               <form onSubmit={signUpForm.handleSubmit(handleSignUp)} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="signup-name">Full Name</Label>
@@ -301,7 +341,7 @@ export default function Auth() {
                   )}
                 </Button>
               </form>
-            </TabsContent>
+            </TabsContent>}
           </Tabs>
         </div>
       </div>
