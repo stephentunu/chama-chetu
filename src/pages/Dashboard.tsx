@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { ContributionModal } from '@/components/dashboard/ContributionModal';
 import { LoanApplicationModal } from '@/components/dashboard/LoanApplicationModal';
+import { JoinChamaModal } from '@/components/dashboard/JoinChamaModal';
 import { 
   Sprout, 
   LogOut, 
@@ -22,7 +23,8 @@ import {
   Plus,
   ArrowUpRight,
   ArrowDownRight,
-  Shield
+  Shield,
+  Users
 } from 'lucide-react';
 
 interface Profile {
@@ -60,6 +62,7 @@ export default function Dashboard() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [showContributionModal, setShowContributionModal] = useState(false);
   const [showLoanModal, setShowLoanModal] = useState(false);
+  const [showJoinChamaModal, setShowJoinChamaModal] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -95,7 +98,7 @@ export default function Dashboard() {
           `)
           .eq('user_id', user.id)
           .eq('status', 'active')
-          .single();
+          .maybeSingle();
 
         if (membershipData) {
           setChamaInfo(membershipData as unknown as ChamaMembership);
@@ -133,6 +136,28 @@ export default function Dashboard() {
 
     fetchData();
   }, [user]);
+
+  const refetchChamaInfo = async () => {
+    if (!user) return;
+    const { data: membershipData } = await supabase
+      .from('chama_members')
+      .select(`
+        chama_id,
+        member_role,
+        chamas (
+          name,
+          contribution_amount,
+          contribution_frequency
+        )
+      `)
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (membershipData) {
+      setChamaInfo(membershipData as unknown as ChamaMembership);
+    }
+  };
 
   const refreshData = async () => {
     if (!user) return;
@@ -245,9 +270,19 @@ export default function Dashboard() {
                   Your Chama: <span className="font-semibold">{chamaInfo.chamas.name}</span>
                 </p>
               ) : (
-                <p className="text-primary-foreground/80">
-                  You haven't joined a Chama yet
-                </p>
+                <div className="flex items-center gap-3">
+                  <p className="text-primary-foreground/80">
+                    You haven't joined a Chama yet
+                  </p>
+                  <Button 
+                    size="sm" 
+                    variant="secondary"
+                    onClick={() => setShowJoinChamaModal(true)}
+                  >
+                    <Users className="w-4 h-4 mr-2" />
+                    Join a Chama
+                  </Button>
+                </div>
               )}
             </div>
             <div className="flex flex-wrap gap-4 text-sm">
@@ -455,6 +490,16 @@ export default function Dashboard() {
         chamaId={chamaInfo?.chama_id || null}
         maxLoanAmount={loanLimit}
         onSuccess={refreshData}
+      />
+
+      <JoinChamaModal
+        open={showJoinChamaModal}
+        onClose={() => setShowJoinChamaModal(false)}
+        userId={user?.id || ''}
+        onSuccess={() => {
+          refetchChamaInfo();
+          refreshData();
+        }}
       />
     </div>
   );
