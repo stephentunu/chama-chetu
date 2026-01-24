@@ -59,9 +59,6 @@ export function Header() {
               </>
             ) : (
               <>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/auth?mode=admin">Admin Login</Link>
-                </Button>
                 <Button variant="ghost" asChild>
                   <Link to="/auth">Sign In</Link>
                 </Button>
@@ -108,9 +105,6 @@ export function Header() {
                 </>
               ) : (
                 <>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link to="/auth?mode=admin" onClick={() => setIsMenuOpen(false)}>Admin Login</Link>
-                  </Button>
                   <Button variant="ghost" asChild>
                     <Link to="/auth" onClick={() => setIsMenuOpen(false)}>Sign In</Link>
                   </Button>
